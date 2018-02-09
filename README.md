@@ -8,7 +8,7 @@ python 3.6.4
 windowsならコマンドプロンプト， 
 macOSならターミナルで以下のコマンドを実行
 
-'python3 input_movie.py'
+**'python3 input_movie.py'**
 
 ## 2.ファイル名の入力
 ・動画ファイル名（テスト環境では.mp4） 
