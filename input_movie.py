@@ -13,24 +13,26 @@ import wx
 MOVIE_WAVE = "m_output.wav"
 SOUND_WAVE = "s_output.wav"
 
+# 動画の長さを保存する変数
+# calculate_tim_lag_secで動画の長さを求める。
+# トリミングの時に(begin_sec + length_sec)がこの値を超えていた場合エラーを返す。
 MOVIE_LENGTH_SEC = None
 
 
 def main():
-    movie_file, sound_file, accel_file = get_filename()
+    movie_file, sound_file, accel_file = get_file()
+    begin_sec, length_sec = get_trim_time_sec()
 
-    time_lag = calculate_time_lag_sec(movie_file, sound_file)
+    time_lag_sec = calculate_time_lag_sec(movie_file, sound_file)
 
-    begin, length = get_trim_time_sec()
-
-    trim_movie(movie_file, begin, length)
-    trim_censor_data(accel_file, begin + time_lag, length)
+    trim_censor_data(accel_file, begin_sec + time_lag_sec, length_sec)
+    trim_movie(movie_file, begin_sec, length_sec)
 
     print(MOVIE_LENGTH_SEC)
 
 
 # 動画，音声，センサデータのファイル名を取得
-def get_filename():
+def get_file():
     movie_file = input_filename("Input movie file name. > ")
     sound_file = input_filename("Input sound file name. > ")
     accel_file = input_filename("Input accel file name. > ")
@@ -38,7 +40,7 @@ def get_filename():
     return movie_file, sound_file, accel_file
 
 
-# get_filename用。存在するファイルの名前を入力するまでループ
+# get_file用。存在するファイルの名前を入力するまでループ
 def input_filename(string):
     while True:
         filename = input(string)
@@ -51,10 +53,10 @@ def input_filename(string):
 
 # 動画のトリミングの開始時間，切り出したい長さを入力
 def get_trim_time_sec():
-    begin = input_trim_time_sec("動画の開始地点[秒] = ")
-    length = input_trim_time_sec("動画の長さ[秒] = ")
+    begin_sec = input_trim_time_sec("動画の開始地点[秒] = ")
+    length_sec = input_trim_time_sec("動画の長さ[秒] = ")
 
-    return begin, length
+    return begin_sec, length_sec
 
 
 # get_trim_time_sec用。数値が入力されるまでループ
@@ -72,32 +74,40 @@ def input_trim_time_sec(string):
 
 
 # 時間差を計測
-def calculate_time_lag_sec(filename1, filename2):
+# 音声の方に遅延がある場合は符号がプラス，動画の方に遅延がある場合は符号がマイナスになる。
+# 実例)
+# 聞き比べた時，動画よりも音声が1秒遅れていた場合
+# time_lag_secの値は＋1になる。
+def calculate_time_lag_sec(movie_file, sound_file):
     global MOVIE_LENGTH_SEC
+
     remove_wav(MOVIE_WAVE)
     remove_wav(SOUND_WAVE)
 
-    sample_rate = convert_wave_to_calculate(filename1, filename2)
+    sample_rate = convert_wave_to_calculate(movie_file, sound_file)
+
+    output_wave_with_subsampling(movie_file, sound_file, sample_rate)
 
     data1, data2 = tidy_up_data_for_calculation()
+
     MOVIE_LENGTH_SEC = len(data1) / sample_rate
 
     corr = sig.correlate(data1, data2, "full")
-    plot_wav.output_waveform2(corr)
+    # plot_wav.output_waveform2(corr)
 
-    time_lag = (len(data1) - corr.argmax()) / sample_rate
+    time_lag_sec = (len(data1) - corr.argmax()) / sample_rate
 
-    if time_lag > 0:
-        print("音声は映像より" + str(round(time_lag, 2)) + "秒遅れています。")
-    elif time_lag < 0:
-        print("映像は音声より" + str(round(time_lag, 2) * -1) + "秒遅れています。")
+    if time_lag_sec > 0:
+        print("音声は映像より" + str(round(time_lag_sec, 2)) + "秒遅れています。")
+    elif time_lag_sec < 0:
+        print("音声は映像より" + str(round(time_lag_sec, 2) * -1) + "秒進んでいます")
     else:
         print("映像と音声の間に時間差はありません。")
 
     remove_wav(MOVIE_WAVE)
     remove_wav(SOUND_WAVE)
 
-    return time_lag
+    return time_lag_sec
 
 
 # calculate_time_lag_sec用。filenameで指定したファイルの存在を確認して削除
@@ -106,30 +116,28 @@ def remove_wav(filename):
         os.remove(filename)
 
 
-# calculate_time_lag_sec用。２つの音声のうち，小さい方のサンプリング周波数でリサンプリングしたwavを書き出し，その周波数を返す
-def convert_wave_to_calculate(filename1, filename2):
-    movie_file = AudioSegment.from_file(filename1)
-    sound_file = AudioSegment.from_file(filename2)
+# calculate_time_lag_sec用。ダウンサンプリングのため，２つのファイルのうち，低い方のサンプリング周波数の値を返す。
+def convert_wave_to_calculate(movie_file, sound_file):
+    movie = AudioSegment.from_file(movie_file)
+    sound = AudioSegment.from_file(sound_file)
 
-    if movie_file.frame_rate < sound_file.frame_rate:
-        sample_rate = movie_file.frame_rate
+    if movie.frame_rate < sound.frame_rate:
+        sample_rate = movie.frame_rate
     else:
-        sample_rate = sound_file.frame_rate
-
-    output_wave_with_subsampling(filename1, filename2, sample_rate)
+        sample_rate = sound.frame_rate
 
     return sample_rate
 
 
 # calculate_time_lag_sec用。sample_rateで指定した周波数でリサンプリングしてwavに書き出し
-def output_wave_with_subsampling(filename1, filename2, sample_rate):
+def output_wave_with_subsampling(movie_file, sound_file, sample_rate):
     # HACK: wavを書き出さなくてもできる方法を探す
     fm = ffmpy.FFmpeg(
-        inputs={filename1: None},
+        inputs={movie_file: None},
         outputs={MOVIE_WAVE: '-ac 1 -ar %d' % sample_rate}
     )
     fo = ffmpy.FFmpeg(
-        inputs={filename2: None},
+        inputs={sound_file: None},
         outputs={SOUND_WAVE: '-ac 1 -ar %d' % sample_rate}
     )
     fm.run()
@@ -138,84 +146,92 @@ def output_wave_with_subsampling(filename1, filename2, sample_rate):
 
 # calculate_time_lag_sec用。データを読み込んで計算用に整形
 def tidy_up_data_for_calculation():
-    data1, rate1 = sf.read(MOVIE_WAVE)
-    data2, rate2 = sf.read(SOUND_WAVE)
+    movie_data, movie_rate = sf.read(MOVIE_WAVE)
+    sound_data, sound_rate = sf.read(SOUND_WAVE)
 
-    if len(data1) < len(data2):
-        data2 = data2[:len(data1)]
-    elif len(data1) > len(data2):
-        data1 = data1[:len(data2)]
+    # 2データの長さを揃える
+    if len(movie_data) < len(sound_data):
+        sound_data = sound_data[:len(movie_data)]
+    elif len(movie_data) > len(sound_data):
+        movie_data = movie_data[:len(sound_data)]
 
-    data1 = data1 - data1.mean()
-    data2 = data2 - data2.mean()
+    # 相互相関関数の計算に影響が出る可能性があるため，平均を0に
+    data1 = movie_data - movie_data.mean()
+    data2 = sound_data - sound_data.mean()
 
     return data1, data2
 
 
-# 指定されたbegin_timeからlength秒間の動画を書き出し
-def trim_movie(filename, begin, length):
-    cmd1 = "-ss " + str(begin)
-    cmd2 = "-t " + str(length)
-    out_name = "trim_" + str(filename)
+# 指定されたbegin_secからlength_sec秒間の動画を書き出し
+def trim_movie(movie_file, begin_sec, length_sec):
+    cmd1 = "-ss " + str(begin_sec)
+    cmd2 = "-t " + str(length_sec)
+    out_name = "trim_" + str(movie_file)
 
     remove_wav(out_name)
 
     fc = ffmpy.FFmpeg(
-        inputs={filename: cmd1},
+        inputs={movie_file: cmd1},
         outputs={out_name: cmd2}
     )
-
-    # start = time.time()
-    # fc.run()
-    # end_time = time.time() - start
-    # print("elapsed_time:{0}".format(end_time) + "[sec]")
     fc.run()
 
 
-# 指定されたbeginからlength分のセンサデータを切り出し
-def trim_censor_data(filename, begin, length):
-    begin *= 1000
-    length *= 1000
-    end = begin + length
+# 指定されたbegin_secからlength_sec分のセンサデータを切り出し
+def trim_censor_data(accel_file, begin_sec, length_sec):
+    check_censor_data_existence_begin(begin_sec)
 
-    file = open(filename, "r")
-    out_file = open("trim_" + filename, "w")
+    begin_ms, length_ms = to_millisecond(begin_sec), to_millisecond(length_sec)
+    end_ms = begin_ms + length_ms
+    complete = 0    # 動画の最後までセンサデータを用意できたかの判定
 
-    if begin < 0:
-        print("指定した時間に対応するセンサデータが用意できませんでした。")
-        print("開始時間を変更すると解決する可能性があります。")
-        sys.exit(1)
+    in_file, out_file = open(accel_file, "r"), open("trim_" + accel_file, "w")
 
     out_file.write("DataNum,0.016,offset.\n")
-    file.readline()
+    in_file.readline()
 
-    lines = file.readlines()
-    print(len(lines))
-    line = None
+    lines = in_file.readlines()
 
     for line in lines:
         line = line.replace("\n", "")
         line = line.split(",")
 
         row = "{},{},{},{}\n".format(
-            (float(line[0]) - begin),
+            (float(line[0]) - begin_ms),
             line[1],
             line[2],
             line[3]
         )
-        if begin < float(line[0]) < end:
+
+        if begin_ms <= float(line[0]) <= end_ms:
             out_file.write(row)
+        elif float(line[0]) >= end_ms:
+            complete = 1
+            break
 
-    last_time = line[0]
-    print(last_time)
+    in_file.close()
+    out_file.close()
 
-    if float(last_time) < (begin + length):
+    check_censor_data_existence_end(complete)
+
+
+# trim_censor_data用。入力された秒数をミリ秒にして返す。
+def to_millisecond(sec):
+    m_sec = sec * 1000
+    return m_sec
+
+
+def check_censor_data_existence_begin(begin_time):
+    if begin_time < 0:
         print("指定した時間に対応するセンサデータが用意できませんでした。")
-        print("動画の長さを短くすると解決する可能性があります。")
+        print("開始時間を変更すると解決する可能性があります。")
         sys.exit(1)
 
-    file.close()
-    out_file.close()
+
+def check_censor_data_existence_end(complete):
+    if not complete:
+        print("最後までセンサデータを用意できませんでした。")
+        sys.exit(1)
 
 
 if __name__ == '__main__':
@@ -223,6 +239,6 @@ if __name__ == '__main__':
 
 
 # TODO
-# movie_lengthの範囲外をトリミングしようとした時にエラーをはくように
-# センサデータについてもおんなじような仕様が作れたら嬉しい
+# MOVIE_LENGTH_SECの範囲外をトリミングしようとした時にエラーをはくように
+# trim_censor_dataの中綺麗にしたいな
 # 各種変数名の見直し
