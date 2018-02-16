@@ -21,10 +21,10 @@ def main():
 
     time_lag_sec, movie_length_sec = calculate_time_lag_sec(movie_file, sound_file)
 
-    begin_sec = get_trim_begin_sec(time_lag_sec)
-    length_sec = get_trim_length_sec(begin_sec, movie_length_sec)
+    # begin_sec = get_trim_begin_sec(time_lag_sec)
+    # length_sec = get_trim_length_sec(begin_sec, movie_length_sec)
 
-    trim_sensor_data(accel_file, begin_sec + time_lag_sec, length_sec)
+    # trim_sensor_data(accel_file, begin_sec + time_lag_sec, length_sec)
     # trim_movie(movie_file, begin_sec, length_sec)
 
 
@@ -57,7 +57,7 @@ def calculate_time_lag_sec(movie_file, sound_file):
     movie_length_sec = len(data1) / sample_rate
 
     corr = sig.correlate(data1, data2, "full")
-    # plot_wav.output_waveform2(corr)
+    plot_wav.output_waveform2(corr)
 
     time_lag_sec = (len(data1) - corr.argmax()) / sample_rate
     time_lag_sec = round(time_lag_sec, 2)

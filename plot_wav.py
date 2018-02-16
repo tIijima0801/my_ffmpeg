@@ -12,10 +12,11 @@ def output_waveform(data1, data2):
 
 
 def output_waveform2(data):
-    plt.plot(data)
-    # plt.title("Cross Correlation")
-    plt.xlabel("Data num")
-    plt.ylabel("Cross Correlation")
+    plt.figure(figsize=(7, 4))
+    # plt.get_xaxis().get_major_formatter().set_scientific(False)
+    plt.plot(data, color='black')
+    plt.xlabel(' k ')
+    plt.ylabel(' Cross Correlation ')
     plt.show()
 
 # import numpy as np
