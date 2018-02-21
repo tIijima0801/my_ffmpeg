@@ -15,8 +15,8 @@ def output_waveform2(data):
     plt.figure(figsize=(7, 4))
     # plt.get_xaxis().get_major_formatter().set_scientific(False)
     plt.plot(data, color='black')
-    plt.xlabel(' k ')
-    plt.ylabel(' Cross Correlation ')
+    plt.xlabel(' data num ')
+    plt.ylabel(' y ')
     plt.show()
 
 # import numpy as np

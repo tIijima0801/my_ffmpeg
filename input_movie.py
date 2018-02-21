@@ -4,6 +4,7 @@ import plot_wav
 import os
 import sys
 from pydub import AudioSegment
+import numpy as np
 import ffmpy
 import scipy.signal as sig
 import soundfile as sf
@@ -13,19 +14,41 @@ import wx
 MOVIE_WAVE = "m_output.wav"
 SOUND_WAVE = "s_output.wav"
 
+CORRECTION = "-c"
+CHANGE_SIGN = "-s"
+MOVING_AVERAGE_FILTER = "-f"
+TRIM = "-t"
+
 
 def main():
-    movie_file = input_filename("Input movie file name. > ")
-    sound_file = input_filename("Input sound file name. > ")
-    accel_file = input_filename("Input accel file name. > ")
+    mode = sys.argv[1]
 
-    time_lag_sec, movie_length_sec = calculate_time_lag_sec(movie_file, sound_file)
+    if mode == CORRECTION:
+        movie_file = input_filename("Input movie file name. > ")
+        sound_file = input_filename("Input sound file name. > ")
+        accel_file = input_filename("Input accel file name. > ")
 
-    # begin_sec = get_trim_begin_sec(time_lag_sec)
-    # length_sec = get_trim_length_sec(begin_sec, movie_length_sec)
+        time_lag_sec, movie_length_sec = calculate_time_lag_sec(movie_file, sound_file)
 
-    # trim_sensor_data(accel_file, begin_sec + time_lag_sec, length_sec)
-    # trim_movie(movie_file, begin_sec, length_sec)
+        # センサデータを書き出す処理
+
+    if mode == CHANGE_SIGN:
+        accel_file = input_filename("Input accel file name. > ")
+        edit_sensor_data_sign(accel_file)
+
+    if mode == MOVING_AVERAGE_FILTER:
+        accel_file = input_filename("Input accel file name. > ")
+        edit_sensor_data_filter(accel_file)
+
+    if mode == TRIM:
+        movie_file = input_filename("Input movie file name. > ")
+        accel_file = input_filename("Input accel file name. > ")
+
+        begin_sec = get_trim_begin_sec()
+        length_sec = get_trim_length_sec()
+
+        trim_sensor_data(accel_file, begin_sec, length_sec)
+        trim_movie(movie_file, begin_sec, length_sec)
 
 
 # ファイル名を取得，存在するファイル名を入力するまで聞き返す
@@ -52,12 +75,12 @@ def calculate_time_lag_sec(movie_file, sound_file):
 
     output_wave_with_subsampling(movie_file, sound_file, sample_rate)
 
-    data1, data2 = tidy_up_data_for_calculation()
+    data1, data2 = read_and_tidy_up_data_for_calculation()
 
     movie_length_sec = len(data1) / sample_rate
 
     corr = sig.correlate(data1, data2, "full")
-    plot_wav.output_waveform2(corr)
+    # plot_wav.output_waveform2(corr)
 
     time_lag_sec = (len(data1) - corr.argmax()) / sample_rate
     time_lag_sec = round(time_lag_sec, 2)
@@ -105,7 +128,7 @@ def output_wave_with_subsampling(movie_file, sound_file, sample_rate):
 
 
 # calculate_time_lag_sec用。データを読み込んで計算用に整形
-def tidy_up_data_for_calculation():
+def read_and_tidy_up_data_for_calculation():
     movie_data, movie_rate = sf.read(MOVIE_WAVE)
     sound_data, sound_rate = sf.read(SOUND_WAVE)
 
@@ -133,25 +156,15 @@ def display_time_lag_sec(time_lag_sec):
 
 
 # トリミングの開始点を入力
-def get_trim_begin_sec(time_lag_sec):
-    while True:
-        trim_begin_sec = input_trim_time_sec("動画の開始地点[秒] = ")
-        if trim_begin_sec + time_lag_sec < 0:
-            # センサデータが用意できないため再入力
-            print("指定した時間のセンサデータを用意できません。")
-        else:
-            return trim_begin_sec
+def get_trim_begin_sec():
+    trim_begin_sec = input_trim_time_sec("動画の開始地点[秒] = ")
+    return trim_begin_sec
 
 
 # トリミングで切り出したい長さを入力
-def get_trim_length_sec(trim_begin_sec, movie_length_sec):
-    while True:
-        trim_length_sec = input_trim_time_sec("動画の長さ[秒] = ")
-        if trim_begin_sec + trim_length_sec > movie_length_sec:
-            # 指定した範囲が動画の長さを超えるため再入力。
-            print("指定した時間が動画の長さを超えています。")
-        else:
-            return trim_length_sec
+def get_trim_length_sec():
+    trim_length_sec = input_trim_time_sec("動画の長さ[秒] = ")
+    return trim_length_sec
 
 
 # get_trim_time_sec用。数値が入力されるまでループ
@@ -186,15 +199,15 @@ def trim_sensor_data(accel_file, begin_sec, length_sec):
         line = line.split(",")
 
         row = "{},{},{},{}\r\n".format(
-            (float(line[0]) - begin_ms),
+            (int(line[0]) - begin_ms),
             line[1],
             line[2],
             line[3]
         )
 
-        if begin_ms <= float(line[0]) <= end_ms:
+        if begin_ms <= int(line[0]) <= end_ms:
             out_file.write(row)
-        elif float(line[0]) >= end_ms:
+        elif int(line[0]) >= end_ms:
             complete = 1
             break
 
@@ -229,6 +242,108 @@ def trim_movie(movie_file, begin_sec, length_sec):
         outputs={out_name: cmd2}
     )
     fc.run()
+
+
+# 軸を指定し，その軸全体の符号を反転する
+def edit_sensor_data_sign(accel_file):
+    out_file = open("edited_" + accel_file, "w")
+
+    column = input_column("x or z or y (example:xz)> ")
+    header, col_time, col_x, col_z, col_y = read_sensor_data_xzy(accel_file)
+
+    if "x" in column:
+        col_x = change_sign_of_list(col_x)
+    if "z" in column:
+        col_z = change_sign_of_list(col_z)
+    if "y" in column:
+        col_y = change_sign_of_list(col_y)
+
+    out_file.write(header)
+    for i in range(len(col_time)):
+        row = "{},{},{},{}\r\n".format(
+            col_time[i],
+            col_x[i],
+            col_z[i],
+            col_y[i]
+        )
+        out_file.write(row)
+
+
+# センサの全ての軸に移動平均フィルタをかける
+def edit_sensor_data_filter(accel_file):
+    out_file = open("edited_" + accel_file, "w")
+
+    header, col_time, col_x, col_z, col_y = read_sensor_data_xzy(accel_file)
+    # plot_wav.output_waveform2(col_x)
+    # plot_wav.output_waveform2(col_z)
+    # plot_wav.output_waveform2(col_y)
+
+    col_x = moving_average_filter(col_x)
+    col_z = moving_average_filter(col_z)
+    col_y = moving_average_filter(col_y)
+    # plot_wav.output_waveform2(col_x)
+    # plot_wav.output_waveform2(col_z)
+    # plot_wav.output_waveform2(col_y)
+
+    out_file.write(header)
+    for i in range(len(col_time)):
+        row = "{},{},{},{}\r\n".format(
+            col_time[i],
+            col_x[i],
+            col_z[i],
+            col_y[i]
+        )
+        out_file.write(row)
+
+
+# 受け取った配列に移動平均フィルタをかける
+def moving_average_filter(column):
+    n = 50
+    data = np.array(column)
+    ave = np.convolve(data, np.ones(n) / float(n), 'same')
+    for i in range(len(ave)):
+        ave[i] = round(ave[i], 4)
+    return ave
+
+
+# x,y,zのどれかが入力されるまで繰り返し
+def input_column(sentence_to_display):
+    while True:
+        column = input(sentence_to_display)
+        if "x" or "y" or "z" in column:
+            break
+        else:
+            print("x,y,zの中から選んで入力してください。")
+
+    return column
+
+
+# 配列の符号を反転する
+def change_sign_of_list(column):
+    for i in range(len(column)):
+        column[i] *= -1
+    return column
+
+
+# センサデータを読み込んで軸ごとにリストにまとめる
+def read_sensor_data_xzy(accel_file):
+    col_time, col_x, col_z, col_y = [], [], [], []
+    in_file = open(accel_file, "r")
+
+    header = in_file.readline()
+
+    lines = in_file.readlines()
+
+    for line in lines:
+        line = line.replace("\n" or "\r", "")
+        line = line.split(",")
+
+        col_time.append(int(line[0]))
+        col_x.append(float(line[1]))
+        col_z.append(float(line[2]))
+        col_y.append(float(line[3]))
+
+    return header, col_time, col_x, col_z, col_y
 
 
 if __name__ == '__main__':
