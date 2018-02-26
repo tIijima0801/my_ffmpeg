@@ -1,6 +1,5 @@
 # coding: utf-8
 
-import plot_wav
 import os
 import sys
 from pydub import AudioSegment
@@ -8,8 +7,6 @@ import numpy as np
 import ffmpy
 import scipy.signal as sig
 import soundfile as sf
-import time
-import wx
 
 MOVIE_WAVE = "m_output.wav"
 SOUND_WAVE = "s_output.wav"
@@ -298,7 +295,7 @@ def edit_sensor_data_filter(accel_file):
 
 # 受け取った配列に移動平均フィルタをかける
 def moving_average_filter(column):
-    n = 50
+    n = 20
     data = np.array(column)
     ave = np.convolve(data, np.ones(n) / float(n), 'same')
     for i in range(len(ave)):

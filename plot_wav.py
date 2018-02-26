@@ -16,7 +16,8 @@ def output_waveform2(data):
     # plt.get_xaxis().get_major_formatter().set_scientific(False)
     plt.plot(data, color='black')
     plt.xlabel(' data num ')
-    plt.ylabel(' y ')
+    # plt.ylabel(' y ')
+    plt.ylim(-1.5, 1.5)
     plt.show()
 
 # import numpy as np
