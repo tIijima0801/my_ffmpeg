@@ -295,7 +295,7 @@ def edit_sensor_data_filter(accel_file):
 
 # 受け取った配列に移動平均フィルタをかける
 def moving_average_filter(column):
-    n = 20
+    n = 10
     data = np.array(column)
     ave = np.convolve(data, np.ones(n) / float(n), 'same')
     for i in range(len(ave)):
